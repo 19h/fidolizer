@@ -1,0 +1,14 @@
+#!/bin/sh
+# Chrome native-messaging entry. Chrome launches this with no arguments.
+DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+if [ -n "${FIDOLIZER_BIN}" ]; then
+  exec "${FIDOLIZER_BIN}" webauthn "$@"
+fi
+if [ -x "${DIR}/fidolizer" ]; then
+  exec "${DIR}/fidolizer" webauthn "$@"
+fi
+if [ -x "${DIR}/../build/fidolizer" ]; then
+  exec "${DIR}/../build/fidolizer" webauthn "$@"
+fi
+echo "fidolizer-webauthn: fidolizer binary not found" >&2
+exit 1

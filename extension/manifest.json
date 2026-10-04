@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Fidolizer",
+  "version": "1.0.0",
+  "description": "Routes Chrome WebAuthn create and get to the fidolizer authenticator.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyqcrJJPspvrGwMmRnyANeNaiiS2hmlY0eP7TpgBYqpBDSUjd3JsTvZAJYBH1lgBnR5tTbGCZdXYj2mJnJ4Y86Z8ShHshT8MaFQNLRoowUh7k9CadI9LAJCGmS/s8CPbha5lcOpAvjO4eMXoERPSq4VTJRV4XHWcZ7sqzUjoiPhBqZGcryP0dZ0pmKFr6tAJiP6411DBNwPf5r5ucHWMfdpLXufprMrfCX88ZqzXzlShl/8GPVq41g9QbXKlTPEnLW4NhgYVTD/VQCD0Gp91uVg6dZIwaRO4R4x1gcvBBnp1FRpNfT5n3zXaAgMO1Xvo7r6xRRqA8Amsabi+DJFUzgQIDAQAB",
+  "permissions": ["webAuthenticationProxy", "nativeMessaging", "tabs"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["page-hook.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["origin.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
+}

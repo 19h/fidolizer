@@ -1,0 +1,9 @@
+{
+  "name": "com.fidolizer.webauthn",
+  "description": "Fidolizer WebAuthn native messaging host",
+  "path": "/ABSOLUTE/PATH/TO/fidolizer/extension/fidolizer-webauthn",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://dhakjbimnhkkehfjbklbmlacpphjpkdp/"
+  ]
+}
