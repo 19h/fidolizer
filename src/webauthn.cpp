@@ -28,6 +28,7 @@ std::string webauthnError(std::string_view name, std::string_view message) {
 }
 
 std::string statusMessage(std::uint8_t status) {
+  if (status == 0x2e) return "no credential on this authenticator matches this account";
   char buf[48];
   std::snprintf(buf, sizeof(buf), "CTAP status 0x%02x", status);
   return buf;
@@ -329,14 +330,21 @@ std::optional<Created> readMake(const Cbor& body, std::string& error) {
   return created;
 }
 
-std::string finishCreate(std::string_view client_json, const Created& created) {
+std::string finishCreate(std::string_view client_json, const Created& created, bool cred_props,
+                        bool resident) {
   const auto id = base64UrlEncode(created.credential_id);
   const auto client = base64UrlEncode(std::span<const std::uint8_t>(
       reinterpret_cast<const std::uint8_t*>(client_json.data()), client_json.size()));
   const auto attestation = created.attestation_object.encode();
+  Json extensions = Json::object({});
+  if (cred_props) {
+    extensions = Json::object({
+        {"credProps", Json::object({{"rk", Json::boolean(resident)}})},
+    });
+  }
   return Json::object({
                           {"authenticatorAttachment", Json::str("platform")},
-                          {"clientExtensionResults", Json::object({})},
+                          {"clientExtensionResults", std::move(extensions)},
                           {"id", Json::str(id)},
                           {"rawId", Json::str(id)},
                           {"response",
@@ -519,7 +527,15 @@ std::string transactParsed(Authenticator& authenticator, const Json& message) {
     std::string error;
     auto created = readMake(*body, error);
     if (!created) return webauthnError("UnknownError", error);
-    return finishCreate(client_json, *created);
+    bool cred_props = false;
+    if (const Json* ext = objectField(request, "extensions");
+        ext && ext->kind() == Json::Kind::Object) {
+      if (const Json* flag = objectField(*ext, "credProps");
+          flag && flag->kind() == Json::Kind::Bool && flag->boolean()) {
+        cred_props = true;
+      }
+    }
+    return finishCreate(client_json, *created, cred_props, selection.rk);
   }
   return finishGet(client_json, *body);
 }

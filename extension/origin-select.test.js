@@ -81,7 +81,10 @@ assert.match(originJs, /location\.origin/);
 assert.doesNotMatch(originJs, /pointerdown|keydown|addEventListener\("focus"/);
 assert.match(hook, /creds\.create/);
 assert.match(hook, /fidolizer-caller/);
-assert.match(hook, /fidolizer-ack/);
+assert.match(hook, /mediation === "conditional"/);
+assert.match(hook, /AbortError/);
+assert.doesNotMatch(hook, /setTimeout\(finish/);
+assert.match(background, /sendResponse\(\{ok: true\}\)/);
 assert.ok(
   manifest.content_scripts.some(
     (script) =>

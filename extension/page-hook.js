@@ -10,30 +10,29 @@
   function wrap(name) {
     const original = creds[name].bind(creds);
     function wrapped(options) {
-      const requestId = Math.random().toString(36);
-      let settled = false;
-      return new Promise((resolve, reject) => {
-        function finish() {
-          if (settled) return;
-          settled = true;
-          window.removeEventListener("message", onAck);
-          Promise.resolve(original(options)).then(resolve, reject);
-        }
-        function onAck(event) {
-          if (event.source !== window) return;
-          const data = event.data;
-          if (!data || data.type !== "fidolizer-ack" || data.requestId !== requestId) return;
-          finish();
-        }
-        window.addEventListener("message", onAck);
-        try {
-          window.postMessage({type: "fidolizer-caller", requestId}, location.origin);
-        } catch (err) {
-          finish();
-          return;
-        }
-        setTimeout(finish, 1000);
-      });
+      // Chrome completes conditional mediation with NotAllowedError while a
+      // webAuthenticationProxy extension is attached, and never delivers it.
+      // Keep the promise pending until the page aborts it. Modal create and
+      // get still go through the proxy.
+      if (name === "get" && options && options.mediation === "conditional") {
+        return new Promise((resolve, reject) => {
+          const signal = options.signal;
+          function abort() {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          }
+          if (!signal) return;
+          if (signal.aborted) {
+            abort();
+            return;
+          }
+          signal.addEventListener("abort", abort, {once: true});
+          void resolve;
+        });
+      }
+      try {
+        window.postMessage({type: "fidolizer-caller", requestId: Math.random().toString(36)}, location.origin);
+      } catch (err) {}
+      return original(options);
     }
     wrapped.__fidolizer = true;
     creds[name] = wrapped;

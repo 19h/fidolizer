@@ -8,6 +8,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
+#include <optional>
 #include <string>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -16,6 +17,12 @@
 extern char** environ;
 
 namespace fidolizer {
+
+#if defined(__APPLE__)
+std::optional<Decision> promptMacApp(std::string_view rp, std::string_view action, bool verification,
+                                    const std::function<bool()>& cancelled);
+#endif
+
 namespace {
 
 Decision promptTerminal(std::string_view rp, std::string_view action, bool verification,
@@ -58,6 +65,9 @@ Decision promptTerminal(std::string_view rp, std::string_view action, bool verif
 Decision promptMac(std::string_view rp, std::string_view action, bool verification,
                    const std::function<bool()>& cancelled) {
 #if defined(__APPLE__)
+  // Chrome launches this host as a bare executable. An AppKit alert in that
+  // process is never ordered in front of the browser, so the WebAuthn call
+  // hangs with nothing to click. System Events can put a dialog above Chrome.
   int pipefd[2];
   if (::pipe(pipefd) != 0) return promptTerminal(rp, action, verification, cancelled);
   const std::string message = std::string(action) + "\n" + std::string(rp);
@@ -69,9 +79,19 @@ Decision promptMac(std::string_view rp, std::string_view action, bool verificati
   posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
   posix_spawn_file_actions_addclose(&actions, pipefd[0]);
   const char* script =
+      "try\n"
+      "tell application \"System Events\"\n"
+      "activate\n"
       "display dialog (system attribute \"FIDOLIZER_MSG\") "
       "buttons {\"Deny\", \"Allow\"} default button \"Allow\" "
-      "with title (system attribute \"FIDOLIZER_TITLE\") giving up after 30";
+      "with title (system attribute \"FIDOLIZER_TITLE\") giving up after 30\n"
+      "end tell\n"
+      "on error\n"
+      "tell current application to activate\n"
+      "display dialog (system attribute \"FIDOLIZER_MSG\") "
+      "buttons {\"Deny\", \"Allow\"} default button \"Allow\" "
+      "with title (system attribute \"FIDOLIZER_TITLE\") giving up after 30\n"
+      "end try\n";
   const char* argv[] = {"/usr/bin/osascript", "-e", script, nullptr};
   pid_t pid = 0;
   const int spawned = posix_spawn(&pid, "/usr/bin/osascript", &actions, nullptr,

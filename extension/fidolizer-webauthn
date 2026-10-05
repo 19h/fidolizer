@@ -1,5 +1,5 @@
 #!/bin/sh
-# Chrome native-messaging entry. Chrome launches this with no arguments.
+# Chrome native-messaging entry. Chrome passes the extension origin as $1.
 DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 if [ -n "${FIDOLIZER_BIN}" ]; then
   exec "${FIDOLIZER_BIN}" webauthn "$@"

@@ -806,6 +806,80 @@ void testWebAuthnNonResident() {
   CHECK(fidolizer::verifyEs256(pub, assert_message, *assert_sig));
 }
 
+void testWebAuthnIoOptions() {
+  auto owned = Session::open();
+  Session& session = *owned;
+  std::vector<std::uint8_t> raw_challenge(32, 0x44);
+  const std::string challenge = fidolizer::base64UrlEncode(raw_challenge);
+  auto created_json = fidolizer::Json::parse(fidolizer::transactWebAuthn(
+      session.authenticator,
+      webauthnRequest(
+          "create",
+          fidolizer::Json::object({
+              {"attestation", fidolizer::Json::str("none")},
+              {"authenticatorSelection",
+               fidolizer::Json::object({
+                   {"requireResidentKey", fidolizer::Json::boolean(false)},
+                   {"residentKey", fidolizer::Json::str("preferred")},
+                   {"userVerification", fidolizer::Json::str("preferred")},
+               })},
+              {"challenge", fidolizer::Json::str(challenge)},
+              {"excludeCredentials",
+               fidolizer::Json::array({fidolizer::Json::object({
+                   {"id", fidolizer::Json::str("4RXvrtZ_HezN3d4HjJ8h_FeEjRURj9AWKn229P5W2kU")},
+                   {"transports", fidolizer::Json::array({fidolizer::Json::str("internal")})},
+                   {"type", fidolizer::Json::str("public-key")},
+               })})},
+              {"extensions", fidolizer::Json::object({
+                                {"credProps", fidolizer::Json::boolean(true)},
+                            })},
+              {"hints", fidolizer::Json::array({})},
+              {"pubKeyCredParams",
+               fidolizer::Json::array({
+                   fidolizer::Json::object({
+                       {"alg", fidolizer::Json::integer(-8)},
+                       {"type", fidolizer::Json::str("public-key")},
+                   }),
+                   fidolizer::Json::object({
+                       {"alg", fidolizer::Json::integer(-7)},
+                       {"type", fidolizer::Json::str("public-key")},
+                   }),
+                   fidolizer::Json::object({
+                       {"alg", fidolizer::Json::integer(-257)},
+                       {"type", fidolizer::Json::str("public-key")},
+                   }),
+               })},
+              {"rp", fidolizer::Json::object({
+                         {"id", fidolizer::Json::str("example.com")},
+                         {"name", fidolizer::Json::str("example.com")},
+                     })},
+              {"timeout", fidolizer::Json::integer(60000)},
+              {"user", fidolizer::Json::object({
+                          {"displayName", fidolizer::Json::str("asd")},
+                          {"id", fidolizer::Json::str("d2ViYXV0aG5pby1hc2Q")},
+                          {"name", fidolizer::Json::str("asd")},
+                      })},
+          }))
+          .dump()));
+  if (!created_json || created_json->find("error") != nullptr || created_json->find("response") == nullptr) {
+    std::cerr << "webauthn.io create failed "
+              << (created_json ? created_json->dump() : std::string("unparsed")) << '\n';
+    CHECK(false);
+    return;
+  }
+  const auto expected_aaguid = aaguidFromUuid("7e0a6c3d-1b94-4e58-9f27-8c4d5a6b7e10");
+  auto response_auth =
+      fidolizer::base64UrlDecode(created_json->find("response")->find("authenticatorData")->text());
+  CHECK(response_auth.has_value());
+  CHECK(response_auth->size() > 53);
+  CHECK(std::memcmp(response_auth->data() + 37, expected_aaguid.data(), expected_aaguid.size()) == 0);
+  const fidolizer::Json* props = created_json->find("clientExtensionResults")->find("credProps");
+  CHECK(props != nullptr);
+  CHECK(props->find("rk") != nullptr);
+  CHECK(props->find("rk")->boolean());
+  CHECK(created_json->find("response")->find("publicKeyAlgorithm")->integer() == -7);
+}
+
 }  // namespace
 
 int main() {
@@ -816,6 +890,7 @@ int main() {
   testU2fAndPing();
   testWebAuthnJson();
   testWebAuthnNonResident();
+  testWebAuthnIoOptions();
   if (g_failed != 0) {
     std::cerr << g_failed << " checks failed\n";
     return 1;

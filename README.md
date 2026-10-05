@@ -130,6 +130,8 @@ There is no `/dev/uhid` on macOS. `RemoteHID`, `rapportd`, and the other system 
 
 Chrome 115 and later can hand WebAuthn create and get to one unpacked extension. `extension/` is that extension. It calls `chrome.webAuthenticationProxy.attach()`, handles `onCreateRequest`, `onGetRequest`, and `onIsUvpaaRequest`, and forwards create and get to `fidolizer webauthn` over native messaging. `isUvpaa` is answered in the extension, as true, so Chrome treats the result as a platform authenticator.
 
+Chrome does not deliver conditional mediation, the passkey autofill request webauthn.io starts on load, to a `webAuthenticationProxy` extension. It fails that call itself with `NotAllowedError`. The page hook keeps a conditional `credentials.get` pending until the page aborts it, so the failure is not shown. Register and Authenticate use the modal ceremony, which Chrome does deliver. The macOS presence prompt is an Allow / Deny dialog brought in front of the browser.
+
 This path does not create a HID device. Safari, Firefox, `ssh -sk`, and `libfido2` still need `serve` and, on macOS, the virtual-HID entitlement. Only one extension can hold `webAuthenticationProxy`. Chrome Remote Desktop uses the same slot.
 
 ```sh
@@ -161,7 +163,7 @@ Each message is a 4-byte little-endian length followed by one JSON object. The e
 
 `type` is `create` or `get`. `request` is Chrome's `requestDetailsJson`: the PublicKeyCredential creation or request options, with byte fields already base64url. Chrome does not put the page origin in that object.
 
-The extension learns the origin itself. A page-world hook in the frame that is about to call `navigator.credentials.create` or `get` tells the service worker, and the worker waits for that report before the real call proceeds. If no calling frame has reported, the worker uses the active tab's top origin. An iframe that only loaded does not replace the page. `crossOrigin` is true when the caller and the tab top origin differ; `topOrigin` is then included in `clientDataJSON`.
+The extension learns the origin itself. A page-world hook in the frame that calls `navigator.credentials.create` or `get` reports that frame, then calls through in the same turn so the user gesture is still active. The worker uses the newest calling frame from the last 30 seconds, waiting briefly if that report has not arrived yet, and otherwise the active tab's top origin. An iframe that only loaded does not replace the page. `crossOrigin` is true when the caller and the tab top origin differ; `topOrigin` is then included in `clientDataJSON`.
 
 The reply is `PublicKeyCredential.toJSON()`:
 

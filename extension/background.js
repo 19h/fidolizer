@@ -4,10 +4,13 @@ const HOST = "com.fidolizer.webauthn";
 
 const focused = new Map();
 
-chrome.runtime.onMessage.addListener((message, sender) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.type !== "fidolizer-origin" || message.calling !== true) return;
   const origin = usableOrigin(typeof message.origin === "string" ? message.origin : "");
-  if (!origin || !sender || !sender.tab) return;
+  if (!origin || !sender || !sender.tab) {
+    sendResponse({ok: false});
+    return;
+  }
   const now = Date.now();
   const kept = (focused.get(sender.tab.id) || []).filter((report) => now - report.at < 30000);
   kept.push({
@@ -17,15 +20,32 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     calling: true,
   });
   focused.set(sender.tab.id, kept);
+  sendResponse({ok: true});
 });
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function hasCallingReport(reports) {
+  const now = Date.now();
+  return (reports || []).some((report) => report.calling === true && now - report.at < 30000);
+}
 
 async function callerContext() {
   const tabs = await chrome.tabs.query({active: true, lastFocusedWindow: true});
   const tab = tabs && tabs[0];
   if (!tab) throw new Error("caller origin is unknown");
+  let reports = focused.get(tab.id) || [];
+  // The page reports the calling frame and then invokes WebAuthn immediately,
+  // so the report can arrive just after this event.
+  if (!hasCallingReport(reports)) {
+    await delay(200);
+    reports = focused.get(tab.id) || [];
+  }
   const origin = selectCallerOrigin({
     tabUrl: tab.url,
-    reports: focused.get(tab.id) || [],
+    reports,
     now: Date.now(),
   });
   if (!origin) throw new Error("caller origin is unknown");

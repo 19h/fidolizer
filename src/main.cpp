@@ -21,6 +21,7 @@
 #include <string_view>
 #include <cerrno>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
 #include <vector>
@@ -201,6 +202,10 @@ Options parseArgs(int argc, char** argv) {
     if (options.command == "delete") {
       if (positionals.size() != 2) throw std::runtime_error("delete requires a credential id");
       options.delete_id = positionals[1];
+    } else if (options.command == "webauthn") {
+      // Chrome passes the extension origin as the first host argument. The
+      // page origin is in the message body, so this argument is not used.
+      if (positionals.size() > 2) throw std::runtime_error("unexpected argument");
     } else if (positionals.size() != 1) {
       throw std::runtime_error("unexpected argument");
     }
@@ -256,6 +261,22 @@ void storeLe32(std::uint8_t* bytes, std::uint32_t value) {
   bytes[3] = static_cast<std::uint8_t>(value >> 24);
 }
 
+void noteHost(std::string_view status) {
+  const char* home = std::getenv("HOME");
+  if (home == nullptr || home[0] == '\0') return;
+  const std::filesystem::path path = std::filesystem::path(home) / ".fidolizer" / "host.log";
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+  if (fd < 0) return;
+  ::fchmod(fd, 0600);
+  std::string line(status);
+  if (line.size() > 300) line.resize(300);
+  line.push_back('\n');
+  (void)::write(fd, line.data(), line.size());
+  ::close(fd);
+}
+
 int runWebAuthn(const Options& options) {
   std::signal(SIGPIPE, SIG_IGN);
   auto store = fidolizer::StateStore::open(options.state);
@@ -274,7 +295,10 @@ int runWebAuthn(const Options& options) {
       std::cerr << "fidolizer: truncated native message\n";
       return 1;
     }
+    noteHost("request");
     const std::string response = fidolizer::transactWebAuthn(authenticator, body);
+    if (response.find("\"error\"") != std::string::npos) noteHost(response);
+    else noteHost("ok");
     if (response.size() > 0xffffffffu) return 1;
     std::uint8_t out_header[4];
     storeLe32(out_header, static_cast<std::uint32_t>(response.size()));
